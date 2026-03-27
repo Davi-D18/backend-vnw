@@ -1,0 +1,1 @@
+Link modelagem: [Link](https://dbdiagram.io/d/VNW-Caso-Lanchonete-69c6659878c6c4bc7a82800a)
