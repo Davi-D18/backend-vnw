@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: enchente_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-enchente_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Mantido como fallback automático para volumes novos
+      - ./back-end/scripts/create-tables.sql:/docker-entrypoint-initdb.d/create-tables.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-enchente_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  db-init:
+    image: postgres:16-alpine
+    container_name: enchente_db_init
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-enchente_db}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ./back-end/scripts:/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -f /scripts/create-tables.sql &&
+             psql -h postgres -U $$POSTGRES_USER -d $$POSTGRES_DB -f /scripts/seed-data.sql"
+    restart: "no"
+
+  api:
+    build:
+      context: ./back-end
+    container_name: enchente_api
+    env_file: .env
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-enchente_db}
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./back-end/src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    restart: always
+
+  frontend:
+    build:
+      context: ./front-end
+    container_name: abrigo_frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: always
+
+volumes:
+  postgres_data:
